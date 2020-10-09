@@ -1,0 +1,51 @@
+﻿@page "/"
+@using CaptchaApp.Client.Extentions
+@inject HttpClient Http
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col">
+            <h2>Список модулей</h2>
+            <table class="table table-striped">
+                <thead class="table-info">
+                    <tr>
+                        <th scope="col">Имя</th>
+                        <th scope="col">Дата создания</th>
+                        <th scope="col">Кириллица</th>
+                        <th scope="col">Латиница</th>
+                        <th scope="col">Цифры</th>
+                        <th scope="col">Специальные символы</th>
+                        <th scope="col">Регистр</th>
+                        <th scope="col">Разметка</th>
+                    </tr>
+                </thead>
+                @foreach (var item in items)
+                {
+                    <tbody>
+                        <tr>
+                            <td>@item.Name</td>
+                            <td>@item.CreatedAt.ToString("d")</td>
+                            <td><input type="checkbox" disabled="disabled" @bind="item.ContainsCyrillic"/></td>
+                            <td><input type="checkbox" disabled="disabled" @bind="item.ContainsLatin"/></td>
+                            <td><input type="checkbox" disabled="disabled" @bind="item.ContainsDigits"/></td>
+                            <td><input type="checkbox" disabled="disabled" @bind="item.ContainsSpecialSymbols"/></td>
+                            <td><input type="checkbox" disabled="disabled" @bind="item.CaseSentence"/></td>
+                            <td>@item.AnswerPlacement.GetEnumDescription()</td>
+                        </tr>
+                    </tbody>
+                }
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    IEnumerable<CaptchaDataSetViewModel> items = new List<CaptchaDataSetViewModel>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        items = await Http.GetFromJsonAsync<IEnumerable<CaptchaDataSetViewModel>>("api/captcha");
+    }
+
+}
