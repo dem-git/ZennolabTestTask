@@ -7,13 +7,10 @@
 
 @using Tewr.Blazor.FileReader
 @using System.IO;
-@using System.Text.Json.Serialization
-@using Blazored.Modal.Services
 @using Newtonsoft.Json
 
 @inject IFileReaderService fileReaderService;
 @inject HttpClient Http
-@inject IModalService Modal
 
 <h2>Добавление модуля</h2>
 <EditForm Model="@model" OnValidSubmit="@HandleValidSubmit">
