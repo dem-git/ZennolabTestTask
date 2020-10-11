@@ -3,23 +3,26 @@
 @using System.Linq
 @using System.Net.Http.Headers
 @using CaptchaApp.Client.Extentions
-@using Components
 
 @using Tewr.Blazor.FileReader
-@using System.IO;
+@using System.IO
+@using MatBlazor
 @using Newtonsoft.Json
+@using System.ComponentModel.DataAnnotations
 
-@inject IFileReaderService fileReaderService;
+@inject IFileReaderService fileReaderService
 @inject HttpClient Http
+@inject IMatToaster Toaster
 
 <h2>Добавление модуля</h2>
-<EditForm Model="@model" OnValidSubmit="@HandleValidSubmit">
-    <DataAnnotationsValidator />
-    <ValidationSummary />
+
+<EditForm Model="@model">
     <table>
         <tr>
             <td><label for="name">Наименование</label></td>
-            <td><InputText id="name" @bind-Value="model.Name" /></td>
+            <td>
+                <InputText id="name" @bind-Value="model.Name" />
+            </td>
         </tr>
         <tr>
             <td>
@@ -31,19 +34,27 @@
         </tr>
         <tr>
             <td><label for="cl">Содержит латиницу</label></td>
-            <td><InputCheckbox id="cl" @bind-Value="model.ContainsLatin" /></td>
+            <td>
+                <InputCheckbox id="cl" @bind-Value="model.ContainsLatin" />
+            </td>
         </tr>
         <tr>
             <td><label for="cd">Содержит цифры</label></td>
-            <td><InputCheckbox id="cd" @bind-Value="model.ContainsDigits" /></td>
+            <td>
+                <InputCheckbox id="cd" @bind-Value="model.ContainsDigits" />
+            </td>
         </tr>
         <tr>
             <td><label for="cs">Содержит специальные символы</label></td>
-            <td><InputCheckbox id="cs" @bind-Value="model.ContainsSpecialSymbols" /></td>
+            <td>
+                <InputCheckbox id="cs" @bind-Value="model.ContainsSpecialSymbols" />
+            </td>
         </tr>
         <tr>
             <td><label for="case">Чувствительность к регистру</label></td>
-            <td><InputCheckbox id="case" @bind-Value="model.CaseSentence" /></td>
+            <td>
+                <InputCheckbox id="case" @bind-Value="model.CaseSentence" />
+            </td>
         </tr>
         <tr>
             <td><label for="answerplace">Расположение разметки</label></td>
@@ -62,75 +73,107 @@
                 <input type="file" @ref=inputTypeFileElement />
             </td>
         </tr>
+        <tr>
+            <td>
+                <div class="form-group @visibleSubmitButton">
+                    <button @onclick="HandleSubmit">Добавить</button>
+                </div>
+            </td>
+            <td>
+                <div class="form-group @visibleProgress">
+                    <br>
+                    <h3 class="mat-subtitle1">Загрузка файла</h3>
+                    <MatProgressBar Indeterminate="true"></MatProgressBar>
+                    <br>
+                </div>
+            </td>
+        </tr>
     </table>
-    <div><button type="submit">Добавить</button></div>
-
 </EditForm>
 
-@code {
 
-    [CascadingParameter(Name = "ErrorComponent")]
-    IErrorComponent ErrorComponent { get; set; }
+    @code {
 
-    ElementReference inputTypeFileElement;
-    CaptchaDataSetPostModel model = new CaptchaDataSetPostModel();
-    EditContext editContext;
-    string resultMessage = string.Empty; 
-
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-        editContext = new EditContext(model);
-    }
-
-
-    async Task HandleValidSubmit()
-    {
-        var isValid = editContext.Validate();
-
-        if (!isValid)
-            return;
-
-        model.CreatedAt = DateTimeOffset.Now;
-
-        // Получить файл с формы.
-        var fileReferences = await fileReaderService.CreateReference(inputTypeFileElement).EnumerateFilesAsync();
-        IFileReference fileReference = fileReferences.FirstOrDefault();
-
-        if (fileReference == null)
-        {
-            ErrorComponent.ShowError("Ошибка", "Не выбран файл-архив для загрузки");
-            return;
-        }
-
-        await using Stream stream = await fileReference.OpenReadAsync();
-        var fileInfo = await fileReference.ReadFileInfoAsync();
-
-        // Создать контент с файлом и моделью.
-        // NOTE честно, не знаю как ещё передать модель и файл в одном post-запросе
-        // теоритически, можно сделать 2 запроса (модель, потом файл), но, имхо, это _плохой_ вариант.
-        var content = new MultipartFormDataContent();
-        content.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data");
-        content.Add(new StreamContent(stream, Convert.ToInt32(stream.Length)), "file", fileInfo.Name);
-        content.Add(JsonContent.Create<CaptchaDataSetPostModel>(model), "model");
-
-        var response = await Http.PostAsync($@"api/captcha", content);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var responseText = await response.Content.ReadAsStringAsync();
-            ErrorComponent.ShowError("Ошибка при добавлении", responseText);
-            return;
-        }
-
-        ErrorComponent.ClearAndHide();
-        // Reset model
-        model = new CaptchaDataSetPostModel();
-
-        var responseModelJson = await response.Content.ReadAsStringAsync();
-        var viewModel = JsonConvert.DeserializeObject<CaptchaDataSetViewModel>(responseModelJson);
-
-        // TODO отобразить сообщение об успешном добавлении
+        string visibleProgress { get; set; } = "d-none";
+        string visibleSubmitButton { get; set; }
+        ElementReference inputTypeFileElement;
+        CaptchaDataSetPostModel model = new CaptchaDataSetPostModel();
+        //EditContext editContext;
+        bool sending { get; set; } = false;
         
+        protected override void OnInitialized()
+        {
+            base.OnInitialized();
+            //editContext = new EditContext(model);
+        }
+
+
+        async Task HandleSubmit()
+        {
+            Toaster.Clear();
+
+            var results = new List<ValidationResult>();
+            var context = new ValidationContext(model);
+            if (!Validator.TryValidateObject(model, context, results, true))
+            {
+                foreach (var message in results)
+                    Toaster.Add(message.ErrorMessage, MatToastType.Danger);
+                return;
+            }
+
+            model.CreatedAt = DateTimeOffset.Now;
+
+            // Получить файл с формы.
+            var fileReferences = await fileReaderService.CreateReference(inputTypeFileElement).EnumerateFilesAsync();
+            IFileReference fileReference = fileReferences.FirstOrDefault();
+
+            if (fileReference == null)
+            {
+                Toaster.Add("Не выбран файл-архив для загрузки", MatToastType.Danger, "Ошибка");
+                return;
+            }
+
+            HttpResponseMessage response;
+            try
+            {
+                visibleSubmitButton = "d-none";
+                visibleProgress = null;
+                sending = true;
+
+                await using Stream stream = await fileReference.OpenReadAsync();
+                var fileInfo = await fileReference.ReadFileInfoAsync();
+
+                // Создать контент с файлом и моделью.
+                // NOTE честно, не знаю как ещё передать модель и файл в одном post-запросе
+                // теоритически, можно сделать 2 запроса (модель, потом файл), но, имхо, это _плохой_ вариант.
+                var content = new MultipartFormDataContent();
+                content.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data");
+                content.Add(new StreamContent(stream, Convert.ToInt32(stream.Length)), "file", fileInfo.Name);
+                content.Add(JsonContent.Create<CaptchaDataSetPostModel>(model), "model");
+
+                response = await Http.PostAsync($@"api/captcha", content);
+            }
+            finally
+            {
+                visibleSubmitButton = null;
+                visibleProgress = "d-none";
+                sending = false;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseText = await response.Content.ReadAsStringAsync();
+                Toaster.Add(responseText, MatToastType.Danger, "Ошибка при добавлении");
+                return;
+            }
+
+            Toaster.Clear();
+            Toaster.Add("Набор данных распознавания добавлен", MatToastType.Success);
+
+            // Reset model
+            model = new CaptchaDataSetPostModel();
+
+            var responseModelJson = await response.Content.ReadAsStringAsync();
+            var viewModel = JsonConvert.DeserializeObject<CaptchaDataSetViewModel>(responseModelJson);
+        }
     }
-}
