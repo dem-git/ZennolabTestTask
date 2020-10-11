@@ -8,6 +8,7 @@ using CaptchaApp.Server.Services;
 using CaptchaApp.Server.Services.Implementation;
 using CaptchaApp.Shared.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
 namespace CaptchaApp.Server.Controllers
@@ -22,6 +23,7 @@ namespace CaptchaApp.Server.Controllers
     {
         readonly IDbRepository _dbRepository;
         readonly IDataSetFileService _fileService;
+        readonly ILogger<CaptchaController> _logger;
         readonly IMapper _mapper;
 
         /// <summary>
@@ -29,11 +31,14 @@ namespace CaptchaApp.Server.Controllers
         /// </summary>
         /// <param name="dbRepository">Репозитория БД.</param>
         /// <param name="fileService">Сервис файлов.</param>
+        /// <param name="logger">Логгер.</param>
         /// <param name="mapper">Маппер.</param>
-        public CaptchaController(IDbRepository dbRepository, IDataSetFileService fileService, IMapper mapper)
+        public CaptchaController(IDbRepository dbRepository, IDataSetFileService fileService,
+            ILogger<CaptchaController> logger, IMapper mapper)
         {
             _dbRepository = dbRepository;
             _fileService = fileService;
+            _logger = logger;
             _mapper = mapper;
         }
 
@@ -100,6 +105,9 @@ namespace CaptchaApp.Server.Controllers
             dataSet.ImagesZipFilename = file.FileName;
             await _dbRepository.Add(dataSet);
             var viewModel = _mapper.Map<CaptchaDataSetViewModel>(dataSet);
+
+            _logger.LogInformation("Сохранён набор данных: {0}", JsonConvert.SerializeObject(viewModel));
+
             return CreatedAtAction(nameof(GetById), new { id = viewModel.Id }, viewModel);
         }
     }
